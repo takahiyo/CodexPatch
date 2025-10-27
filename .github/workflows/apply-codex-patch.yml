@@ -1,0 +1,80 @@
+name: Codexパッチ適用
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_branch:
+        description: 'パッチを適用するブランチ名'
+        required: true
+        default: 'main'
+      patch_file:
+        description: 'リポジトリルートからのパッチファイルへのパス（例: patch）'
+        required: true
+        default: 'patch'
+
+jobs:
+  apply-patch:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.target_branch }}
+
+      - name: Verify patch file exists
+        run: |
+          if [ ! -f "${{ github.event.inputs.patch_file }}" ]; then
+            echo "指定されたパッチファイルが見つかりません: ${{ github.event.inputs.patch_file }}" >&2
+            exit 1
+          fi
+
+      - name: Display patch summary
+        run: |
+          git apply --stat "${{ github.event.inputs.patch_file }}"
+
+      - name: Apply patch
+        run: |
+          git apply --apply --whitespace=fix "${{ github.event.inputs.patch_file }}"
+
+      - name: Show working tree status
+        run: git status --short
+
+      - name: Run tests (optional)
+        if: false
+        run: |
+          echo "必要に応じてテストコマンドを有効化してください"
+
+      - name: Commit changes
+        run: |
+          if git diff --quiet; then
+            echo "パッチ適用後の差分がありません。コミットをスキップします。"
+            exit 0
+          fi
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git commit -am "Apply Codex patch"
+
+      - name: Push changes
+        if: always()
+        env:
+          TARGET_BRANCH: ${{ github.event.inputs.target_branch }}
+        run: |
+          if git show-ref --verify --quiet refs/remotes/origin/$TARGET_BRANCH; then
+            git push origin HEAD:$TARGET_BRANCH
+          else
+            echo "指定されたブランチ $TARGET_BRANCH が存在しません" >&2
+            exit 1
+          fi
+
+      - name: Create pull request
+        if: ${{ github.event.inputs.target_branch != github.ref_name }}
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: ${{ github.event.inputs.target_branch }}
+          title: "Apply Codex patch"
+          body: |
+            自動適用された Codex パッチを確認してください。
+            - 元ブランチ: ${{ github.ref_name }}
+            - 適用ブランチ: ${{ github.event.inputs.target_branch }}
+            - パッチファイル: ${{ github.event.inputs.patch_file }}
