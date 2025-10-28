@@ -17,27 +17,40 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: ソースブランチをチェックアウト
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: パッチファイルを準備
+        env:
+          PATCH_FILE: ${{ github.event.inputs.patch_file }}
+        run: |
+          if [ ! -f "$PATCH_FILE" ]; then
+            echo "ソースブランチ（${{ github.ref_name }}）に $PATCH_FILE が存在しません。" >&2
+            exit 1
+          fi
+          PATCH_PATH="$RUNNER_TEMP/codex.patch"
+          cp "$PATCH_FILE" "$PATCH_PATH"
+          echo "PATCH_PATH=$PATCH_PATH" >> "$GITHUB_ENV"
+
+      - name: ターゲットブランチをチェックアウト
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.inputs.target_branch }}
+          fetch-depth: 0
 
-      - name: Verify patch file exists
-        run: |
-          if [ ! -f "${{ github.event.inputs.patch_file }}" ]; then
-            echo "指定されたパッチファイルが見つかりません: ${{ github.event.inputs.patch_file }}" >&2
-            exit 1
-          fi
+      - name: パッチのサマリーを表示
+        env:
+          PATCH_PATH: ${{ env.PATCH_PATH }}
+        run: git apply --stat "$PATCH_PATH"
 
-      - name: Display patch summary
-        run: |
-          git apply --stat "${{ github.event.inputs.patch_file }}"
+      - name: パッチを適用
+        env:
+          PATCH_PATH: ${{ env.PATCH_PATH }}
+        run: git apply --apply --whitespace=fix "$PATCH_PATH"
 
-      - name: Apply patch
-        run: |
-          git apply --apply --whitespace=fix "${{ github.event.inputs.patch_file }}"
-
-      - name: Show working tree status
+      - name: 作業ツリーの状態を表示
         run: git status --short
 
       - name: Run tests (optional)
@@ -45,17 +58,18 @@ jobs:
         run: |
           echo "必要に応じてテストコマンドを有効化してください"
 
-      - name: Commit changes
+      - name: コミットを作成
         run: |
-          if git diff --quiet; then
+          if [ -z "$(git status --short)" ]; then
             echo "パッチ適用後の差分がありません。コミットをスキップします。"
             exit 0
           fi
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-          git commit -am "Apply Codex patch"
+          git add -A
+          git commit -m "Apply Codex patch"
 
-      - name: Push changes
+      - name: 変更をプッシュ
         if: always()
         env:
           TARGET_BRANCH: ${{ github.event.inputs.target_branch }}
@@ -67,7 +81,7 @@ jobs:
             exit 1
           fi
 
-      - name: Create pull request
+      - name: Pull Request を作成
         if: ${{ github.event.inputs.target_branch != github.ref_name }}
         uses: peter-evans/create-pull-request@v6
         with:
