@@ -7,6 +7,10 @@ on:
         description: 'パッチを適用するブランチ名'
         required: true
         default: 'main'
+      source_branch:
+        description: 'パッチファイルを取得するブランチ名（省略時はワークフローを実行したブランチ）'
+        required: false
+        default: ''
       patch_file:
         description: 'リポジトリルートからのパッチファイルへのパス（例: patch）'
         required: true
@@ -17,28 +21,42 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: ソースブランチをチェックアウト
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: パッチファイルを準備
-        env:
-          PATCH_FILE: ${{ github.event.inputs.patch_file }}
-        run: |
-          if [ ! -f "$PATCH_FILE" ]; then
-            echo "ソースブランチ（${{ github.ref_name }}）に $PATCH_FILE が存在しません。" >&2
-            exit 1
-          fi
-          PATCH_PATH="$RUNNER_TEMP/codex.patch"
-          cp "$PATCH_FILE" "$PATCH_PATH"
-          echo "PATCH_PATH=$PATCH_PATH" >> "$GITHUB_ENV"
-
       - name: ターゲットブランチをチェックアウト
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.inputs.target_branch }}
           fetch-depth: 0
+
+      - name: パッチファイルを取得
+        env:
+          PATCH_FILE: ${{ github.event.inputs.patch_file }}
+          SOURCE_BRANCH_INPUT: ${{ github.event.inputs.source_branch }}
+          DEFAULT_SOURCE_BRANCH: ${{ github.ref_name }}
+        run: |
+          SOURCE_BRANCH="$SOURCE_BRANCH_INPUT"
+          if [ -z "$SOURCE_BRANCH" ]; then
+            SOURCE_BRANCH="$DEFAULT_SOURCE_BRANCH"
+          fi
+
+          SOURCE_BRANCH="${SOURCE_BRANCH#refs/heads/}"
+          SOURCE_BRANCH="${SOURCE_BRANCH#origin/}"
+
+          if ! git ls-remote --exit-code origin "refs/heads/$SOURCE_BRANCH" > /dev/null; then
+            echo "指定されたソースブランチ $SOURCE_BRANCH が origin に存在しません。" >&2
+            exit 1
+          fi
+
+          git fetch origin "$SOURCE_BRANCH"
+
+          PATCH_PATH="$RUNNER_TEMP/codex.patch"
+          if ! git show "origin/$SOURCE_BRANCH:$PATCH_FILE" > "$PATCH_PATH"; then
+            echo "ブランチ $SOURCE_BRANCH に $PATCH_FILE が存在しません。" >&2
+            exit 1
+          fi
+
+          echo "パッチファイルを $SOURCE_BRANCH から取得しました。"
+          echo "SOURCE_BRANCH=$SOURCE_BRANCH" >> "$GITHUB_ENV"
+          echo "PATCH_PATH=$PATCH_PATH" >> "$GITHUB_ENV"
 
       - name: パッチのサマリーを表示
         env:
@@ -90,5 +108,6 @@ jobs:
           body: |
             自動適用された Codex パッチを確認してください。
             - 元ブランチ: ${{ github.ref_name }}
+            - パッチ取得ブランチ: ${{ env.SOURCE_BRANCH }}
             - 適用ブランチ: ${{ github.event.inputs.target_branch }}
             - パッチファイル: ${{ github.event.inputs.patch_file }}
