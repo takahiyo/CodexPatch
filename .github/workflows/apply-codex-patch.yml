@@ -79,35 +79,87 @@ jobs:
       - name: コミットを作成
         run: |
           if [ -z "$(git status --short)" ]; then
+            echo "HAS_CHANGES=false" >> "$GITHUB_ENV"
             echo "パッチ適用後の差分がありません。コミットをスキップします。"
             exit 0
           fi
+          echo "HAS_CHANGES=true" >> "$GITHUB_ENV"
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git add -A
           git commit -m "Apply Codex patch"
 
-      - name: 変更をプッシュ
-        if: always()
+      - name: プッシュ先ブランチを決定
+        if: env.HAS_CHANGES == 'true'
         env:
           TARGET_BRANCH: ${{ github.event.inputs.target_branch }}
+          DISPATCH_BRANCH: ${{ github.ref_name }}
         run: |
-          if git show-ref --verify --quiet refs/remotes/origin/$TARGET_BRANCH; then
-            git push origin HEAD:$TARGET_BRANCH
+          PUSH_BRANCH="$TARGET_BRANCH"
+          if [ "$TARGET_BRANCH" != "$DISPATCH_BRANCH" ]; then
+            PUSH_BRANCH="codex-patch/${GITHUB_RUN_ID}"
+            echo "ターゲットブランチとワークフローブランチが異なるため、$PUSH_BRANCH にプッシュします。"
           else
-            echo "指定されたブランチ $TARGET_BRANCH が存在しません" >&2
-            exit 1
+            echo "ターゲットブランチに直接プッシュします。"
           fi
+          echo "PUSH_BRANCH=$PUSH_BRANCH" >> "$GITHUB_ENV"
+
+      - name: 変更をプッシュ
+        if: env.HAS_CHANGES == 'true'
+        env:
+          TARGET_BRANCH: ${{ github.event.inputs.target_branch }}
+          PUSH_BRANCH: ${{ env.PUSH_BRANCH }}
+        run: |
+          if [ "$PUSH_BRANCH" = "$TARGET_BRANCH" ]; then
+            if ! git show-ref --verify --quiet "refs/remotes/origin/$TARGET_BRANCH"; then
+              echo "指定されたブランチ $TARGET_BRANCH が存在しません" >&2
+              exit 1
+            fi
+          fi
+          git push origin HEAD:"$PUSH_BRANCH"
 
       - name: Pull Request を作成
-        if: ${{ github.event.inputs.target_branch != github.ref_name }}
-        uses: peter-evans/create-pull-request@v6
+        if: env.HAS_CHANGES == 'true' && github.event.inputs.target_branch != github.ref_name
+        uses: actions/github-script@v7
+        env:
+          TARGET_BRANCH: ${{ github.event.inputs.target_branch }}
+          SOURCE_BRANCH_FOR_PATCH: ${{ env.SOURCE_BRANCH }}
+          PATCH_FILE_PATH: ${{ github.event.inputs.patch_file }}
+          PUSH_BRANCH: ${{ env.PUSH_BRANCH }}
         with:
-          branch: ${{ github.event.inputs.target_branch }}
-          title: "Apply Codex patch"
-          body: |
-            自動適用された Codex パッチを確認してください。
-            - 元ブランチ: ${{ github.ref_name }}
-            - パッチ取得ブランチ: ${{ env.SOURCE_BRANCH }}
-            - 適用ブランチ: ${{ github.event.inputs.target_branch }}
-            - パッチファイル: ${{ github.event.inputs.patch_file }}
+          script: |
+            const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
+            const headRef = `${owner}:${process.env.PUSH_BRANCH}`;
+            const baseRef = process.env.TARGET_BRANCH;
+
+            const existing = await github.rest.pulls.list({
+              owner,
+              repo,
+              head: headRef,
+              base: baseRef,
+              state: 'open'
+            });
+
+            if (existing.data.length > 0) {
+              core.info(`既存の Pull Request (${existing.data[0].html_url}) が見つかりました。新規作成は行いません。`);
+              return;
+            }
+
+            const title = 'Apply Codex patch';
+            const body = [
+              '自動適用された Codex パッチを確認してください。',
+              `- 元ブランチ: ${process.env.GITHUB_REF_NAME}`,
+              `- パッチ取得ブランチ: ${process.env.SOURCE_BRANCH_FOR_PATCH}`,
+              `- 適用ブランチ: ${baseRef}`,
+              `- プッシュブランチ: ${process.env.PUSH_BRANCH}`,
+              `- パッチファイル: ${process.env.PATCH_FILE_PATH}`
+            ].join('\n');
+
+            await github.rest.pulls.create({
+              owner,
+              repo,
+              title,
+              head: process.env.PUSH_BRANCH,
+              base: baseRef,
+              body
+            });
