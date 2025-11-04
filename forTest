@@ -1,0 +1,7 @@
+diff --git a/test b/test
+index 9daeafb9864cf43055ae93beb0afd6c7d144bfa4..3b18e512dba79e4c8300dd08aeb37f8e728b8dad 100644
+--- a/test
++++ b/test
+@@ -1 +1 @@
+-test
++hello world
