@@ -1,0 +1,14 @@
+{
+  "name": "sample-readme-update",
+  "description": "Update README with enhanced description",
+  "targetRepository": "",
+  "targetBranch": "main",
+  "patchFile": "sample-readme-update.patch",
+  "createdAt": "2025-11-04T00:00:00Z",
+  "status": "example",
+  "metadata": {
+    "author": "codex-patch-system",
+    "generator": "manual",
+    "tags": ["documentation", "readme", "example"]
+  }
+}

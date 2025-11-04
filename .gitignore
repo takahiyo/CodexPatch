@@ -1,0 +1,51 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.env
+
+# Test coverage
+coverage/
+.coverage
+*.cover
+.nyc_output/
+
+# Build outputs
+dist/
+build/
+*.egg-info/
+
+# Patches (keep structure, ignore specific content if needed)
+# Uncomment if you want to ignore certain patch patterns
+# patches/private/
+# patches/wip/

@@ -1,0 +1,17 @@
+{
+  "description": "Sample batch patch configuration",
+  "targetRepository": "owner/repository",
+  "targetBranch": "main",
+  "patches": [
+    {
+      "file": "patches/examples/sample-readme-update.patch",
+      "target": ".",
+      "description": "Update README"
+    }
+  ],
+  "options": {
+    "failFast": true,
+    "runTests": false,
+    "testCommand": ""
+  }
+}
