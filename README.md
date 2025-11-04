@@ -1,14 +1,15 @@
-# CodexPatch - AI生成パッチの自動適用システム
+# CodexPatch - AI生成パッチの完全クラウド適用システム
 
 <div align="center">
 
 ![Version](https://img.shields.io/badge/version-2.0.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-supported-brightgreen)
+![Cloud Native](https://img.shields.io/badge/Cloud-Native-orange)
 
-**Codex などの AI コーディング支援ツールが出力したパッチを自動的に検証・適用し、GitHub Actions で完全自動化**
+**ローカル環境不要！ブラウザだけで完結する AI 生成パッチの自動適用システム**
 
-[機能](#機能) | [クイックスタート](#クイックスタート) | [使い方](#使い方) | [高度な使い方](#高度な使い方)
+[機能](#機能) | [クイックスタート](#クイックスタート) | [使い方](#使い方) | [FAQ](#faq)
 
 </div>
 
@@ -16,168 +17,295 @@
 
 ## 🎯 概要
 
-CodexPatchは、AI（Codex、Claude、GPTなど）が生成したコード差分（patch/diff）を効率的に管理し、GitHub Actions経由で自動適用するための統合システムです。
+CodexPatchは、AI（Codex、Claude、GPTなど）が生成したコード差分（patch/diff）を、**ローカル環境不要でブラウザ上だけで管理**し、GitHub Actions経由で自動適用するための完全クラウドネイティブシステムです。
+
+### 🌟 完全クラウド対応
+
+- ✅ **ローカル環境不要** - git clone、コマンドライン操作一切不要
+- ✅ **ブラウザだけで完結** - GitHub UIだけで全ての操作が可能
+- ✅ **即座に使用開始** - 設定不要、今すぐ使える
 
 ### 主な特徴
 
 - 🤖 **AI生成パッチの自動適用** - Codexなどで生成されたパッチを自動で適用
 - 🔄 **複数リポジトリ対応** - 他のリポジトリへもパッチを適用可能
 - 📦 **一括適用機能** - 複数のパッチを一度に適用
-- ✅ **詳細な検証** - パッチ適用前の自動検証とドライラン
-- 🛠️ **CLIツール** - ローカル環境でのパッチ管理用ツール
+- ✅ **自動検証** - GitHub Actions上で自動検証
 - 🔧 **柔軟な設定** - 直接pushまたはPR作成を選択可能
 - 📊 **テスト統合** - パッチ適用後の自動テスト実行
+- 🌐 **完全Web UI** - すべての操作をブラウザで完結
 
 ---
 
-## 📁 プロジェクト構造
+## 🚀 クイックスタート（ローカル環境不要）
 
+### ステップ1: Codexでパッチを生成
+
+AIツール（Codex、Claude、GitHub Copilotなど）に変更を依頼し、差分を出力させます。
+
+**例：Codexへの依頼**
 ```
-CodexPatch/
-├── .github/
-│   └── workflows/
-│       ├── apply-codex-patch.yml        # 単一パッチ適用ワークフロー
-│       └── apply-batch-patches.yml      # 複数パッチ一括適用ワークフロー
-├── patches/                              # パッチファイル格納ディレクトリ
-│   └── examples/                         # サンプルパッチ
-│       ├── sample-readme-update.patch
-│       ├── sample-readme-update.meta.json
-│       └── batch-config.json
-├── scripts/
-│   └── generate-patch-template.sh       # パッチテンプレート生成スクリプト
-├── tools/
-│   └── patch-cli.sh                     # パッチ管理CLIツール
-└── README.md                             # このファイル
+以下のファイルを修正してください：
+- README.mdのタイトルを "Awesome Project" に変更
+- 機能説明セクションを追加
+
+差分をgit diff形式で出力してください。
 ```
 
----
-
-## 🚀 クイックスタート
-
-### 1. リポジトリのセットアップ
-
-```bash
-# リポジトリをクローン
-git clone https://github.com/your-username/CodexPatch.git
-cd CodexPatch
-
-# CLIツールに実行権限を付与
-chmod +x tools/patch-cli.sh scripts/generate-patch-template.sh
-```
-
-### 2. パッチテンプレートの作成
-
-```bash
-# パッチテンプレートを生成
-./scripts/generate-patch-template.sh \
-  -n "feature-update-header" \
-  -r "your-org/your-repo" \
-  -b "main" \
-  -d "Update header component"
-```
-
-### 3. Codexで生成されたパッチを貼り付け
-
-生成されたパッチファイル（例: `patches/your-org_your-repo/2025-11-04_feature-update-header.patch`）を開き、Codexから出力された差分を貼り付けます。
-
+**Codexからの出力（例）:**
 ```diff
-diff --git a/src/components/Header.tsx b/src/components/Header.tsx
+diff --git a/README.md b/README.md
 index 1234567..abcdefg 100644
---- a/src/components/Header.tsx
-+++ b/src/components/Header.tsx
-@@ -10,7 +10,7 @@ export const Header = () => {
-   return (
-     <header>
--      <h1>Old Title</h1>
-+      <h1>New Awesome Title</h1>
-     </header>
-   )
- }
+--- a/README.md
++++ b/README.md
+@@ -1,4 +1,6 @@
+-# My Project
++# Awesome Project
+
+-A simple project.
++A powerful project with amazing features.
++
++## Features
 ```
 
-### 4. パッチの検証
+### ステップ2: GitHub UIでパッチファイルを作成
 
-```bash
-# パッチファイルを検証
-./tools/patch-cli.sh validate patches/your-org_your-repo/2025-11-04_feature-update-header.patch
+1. **このリポジトリ（CodexPatch）をブラウザで開く**
+   - https://github.com/your-username/CodexPatch
 
-# パッチの詳細情報を確認
-./tools/patch-cli.sh info patches/your-org_your-repo/2025-11-04_feature-update-header.patch
-```
+2. **新しいパッチファイルを作成**
+   - `patches/` フォルダを開く
+   - 「Add file」→「Create new file」をクリック
+   - ファイル名を入力: `patches/2025-11-04_update-readme.patch`
 
-### 5. GitHub Actionsでパッチを適用
+3. **パッチ内容を貼り付け**
+   - Codexから出力された差分をそのまま貼り付け
+   - 「Commit new file」をクリック
+   - コミットメッセージ: `Add patch: update README`
+   - 「Commit directly to the main branch」を選択
+   - 「Commit new file」をクリック
 
-1. パッチファイルをコミット＆プッシュ
-   ```bash
-   git add patches/
-   git commit -m "Add patch: feature-update-header"
-   git push
+### ステップ3: GitHub Actionsでパッチを適用
+
+1. **Actionsタブを開く**
+   - リポジトリのトップページで「Actions」タブをクリック
+
+2. **ワークフローを実行**
+   - 左サイドバーから「Codexパッチ適用」を選択
+   - 右上の「Run workflow」ボタンをクリック
+
+3. **パラメータを入力**
+   ```
+   target_repository: your-org/your-target-repo
+   target_branch: main
+   patch_file: patches/2025-11-04_update-readme.patch
+   push_strategy: pull_request
+   commit_message: docs: update README with Codex patch
    ```
 
-2. GitHub上で「Actions」タブを開く
-3. `Codexパッチ適用` ワークフローを選択
-4. `Run workflow` をクリックし、必要な情報を入力
-   - **target_repository**: 適用先リポジトリ（例: `your-org/your-repo`）
-   - **target_branch**: 適用先ブランチ（例: `main`）
-   - **patch_file**: パッチファイルのパス
-   - **push_strategy**: `pull_request`（PRを作成）または `direct`（直接push）
+4. **「Run workflow」をクリック**
+
+5. **結果を確認**
+   - ワークフローが完了すると、対象リポジトリにPRが自動作成されます
+   - PRを確認してマージ
+
+**完了！** ローカル環境を一切使わずにパッチを適用できました 🎉
 
 ---
 
-## 📖 使い方
+## 📖 詳細な使い方
 
-### CLIツールの使用
+### パターン1: 単一パッチの適用
 
-#### パッチファイルの検証
+#### シナリオ
+あなたのプロジェクト `myorg/myapp` の `Header.tsx` を更新したい。
 
-```bash
-# 単一パッチを検証
-./tools/patch-cli.sh validate patches/my-patch.patch
+#### 手順
 
-# パッチ一覧を表示
-./tools/patch-cli.sh list patches/
+**1. Codexでパッチを生成**
+```
+以下を実装してください：
+- Header.tsxのタイトルを中央揃えに変更
+- フォントサイズを20pxに設定
 
-# パッチの詳細情報を表示
-./tools/patch-cli.sh info patches/my-patch.patch
+git diff形式で出力してください。
 ```
 
-#### ローカルでパッチを適用
+**2. GitHubでパッチファイルを作成**
+- ブラウザでこのリポジトリ（CodexPatch）を開く
+- `patches/myorg_myapp/` フォルダに移動（なければ作成）
+- 「Add file」→「Create new file」
+- ファイル名: `2025-11-04_header-update.patch`
+- Codexの出力を貼り付け
+- コミット
 
-```bash
-# ドライラン（実際には適用しない）
-./tools/patch-cli.sh apply patches/my-patch.patch --check
+**3. ワークフローを実行**
+- 「Actions」→「Codexパッチ適用」→「Run workflow」
+- パラメータ入力:
+  ```
+  target_repository: myorg/myapp
+  target_branch: main
+  patch_file: patches/myorg_myapp/2025-11-04_header-update.patch
+  push_strategy: pull_request
+  commit_message: style: update header styling
+  pr_title: Update header component styling
+  run_tests: skip
+  ```
+- 実行
 
-# 実際に適用
-./tools/patch-cli.sh apply patches/my-patch.patch
+**4. PRを確認**
+- `myorg/myapp` リポジトリの「Pull requests」タブを開く
+- 自動作成されたPRを確認
+- レビュー後にマージ
 
-# 特定のディレクトリに適用
-./tools/patch-cli.sh apply patches/my-patch.patch --directory /path/to/repo
+---
 
-# 3-wayマージを使用
-./tools/patch-cli.sh apply patches/my-patch.patch --3way
+### パターン2: 複数パッチの一括適用
 
-# パッチを逆適用（ロールバック）
-./tools/patch-cli.sh apply patches/my-patch.patch --reverse
+#### シナリオ
+複数の小さな修正を一度に適用したい。
+
+#### 手順
+
+**1. 各パッチファイルを作成**
+
+GitHub UIで以下のファイルを作成：
+- `patches/batch-2025-11-04/fix-typo.patch`
+- `patches/batch-2025-11-04/update-deps.patch`
+- `patches/batch-2025-11-04/add-comments.patch`
+
+それぞれにCodexで生成したパッチを貼り付けてコミット。
+
+**2. バッチワークフローを実行**
+- 「Actions」→「複数パッチの一括適用」→「Run workflow」
+- パラメータ入力:
+  ```
+  target_repository: myorg/myapp
+  target_branch: develop
+  patch_files:
+  patches/batch-2025-11-04/fix-typo.patch
+  patches/batch-2025-11-04/update-deps.patch
+  patches/batch-2025-11-04/add-comments.patch
+  
+  push_strategy: pull_request
+  commit_message: chore: apply multiple improvements
+  fail_fast: true
+  ```
+- 実行
+
+**3. 結果確認**
+- 1つのPRにすべてのパッチがまとめて適用されます
+- Actions サマリーで各パッチの適用状況を確認できます
+
+---
+
+### パターン3: 他のリポジトリへの適用
+
+#### 事前準備: Personal Access Token (PAT) の設定
+
+**1. PATを作成**
+- GitHub設定を開く: https://github.com/settings/tokens
+- 「Generate new token (classic)」をクリック
+- Note: `CodexPatch Applier`
+- スコープ: `repo` にチェック
+- 「Generate token」をクリック
+- トークンをコピー（一度しか表示されません！）
+
+**2. Secretを設定**
+- このリポジトリ（CodexPatch）の「Settings」タブを開く
+- 左サイドバーの「Secrets and variables」→「Actions」
+- 「New repository secret」をクリック
+- Name: `PATCH_APPLIER_TOKEN`
+- Secret: コピーしたトークンを貼り付け
+- 「Add secret」をクリック
+
+これで、どのリポジトリにもパッチを適用できるようになりました！
+
+---
+
+## 💡 よくある使用例
+
+### 例1: ドキュメントの更新
+
+```
+# Codexへの依頼
+READMEのインストール手順を詳しくしてください。
+npm installの手順とNode.jsバージョン要件を追加してください。
 ```
 
-#### 現在の変更からパッチを作成
+1. Codexの出力をコピー
+2. GitHub UIで `patches/docs-update.patch` を作成
+3. ワークフロー実行
+4. 完了！
 
-```bash
-# 現在の変更をパッチファイルとして保存
-./tools/patch-cli.sh create patches/my-changes.patch
+### 例2: バグ修正
+
+```
+# Codexへの依頼  
+src/utils/validation.tsのemailバリデーションバグを修正してください。
+現在の正規表現が間違っています。
 ```
 
-### GitHub Actions ワークフロー
+1. Codexの出力をコピー
+2. GitHub UIで `patches/bugfix-email-validation.patch` を作成
+3. ワークフロー実行（`run_tests: run` を指定）
+4. 自動テスト実行後にPR作成
 
-#### 単一パッチの適用
+### 例3: 新機能の追加
 
-ワークフロー: `.github/workflows/apply-codex-patch.yml`
+```
+# Codexへの依頼
+ダークモード切り替え機能を追加してください。
+- Toggleボタンをヘッダーに追加
+- localStorageで設定を保存
+- CSSクラスで切り替え
+```
 
-**入力パラメータ:**
+1. Codexが複数ファイルの差分を出力
+2. GitHub UIで `patches/feature-dark-mode.patch` を作成
+3. ワークフロー実行
+4. PRでレビュー→マージ
+
+---
+
+## 🎨 パッチファイルの整理方法
+
+### 推奨ディレクトリ構造
+
+```
+patches/
+├── myorg_myrepo/              # リポジトリごとに分類
+│   ├── 2025-11-04_feature-a.patch
+│   ├── 2025-11-04_bugfix-b.patch
+│   └── 2025-11-05_docs-update.patch
+├── another_repo/
+│   └── 2025-11-04_refactor.patch
+└── batch-2025-11-04/          # バッチ適用用
+    ├── fix-1.patch
+    ├── fix-2.patch
+    └── fix-3.patch
+```
+
+### ファイル名規則
+
+```
+YYYY-MM-DD_description.patch
+
+例：
+2025-11-04_update-header.patch
+2025-11-04_fix-validation-bug.patch
+2025-11-05_add-dark-mode.patch
+```
+
+---
+
+## ⚙️ ワークフローパラメータ詳細
+
+### 単一パッチ適用ワークフロー
 
 | パラメータ | 必須 | デフォルト | 説明 |
 |-----------|------|-----------|------|
-| `target_repository` | ❌ | (空) | 適用先リポジトリ `owner/name` |
+| `target_repository` | ❌ | (このリポジトリ) | 適用先リポジトリ `owner/name` |
 | `target_branch` | ✅ | `main` | 適用先ブランチ |
 | `patch_file` | ✅ | `patch` | パッチファイルのパス |
 | `push_strategy` | ✅ | `pull_request` | `direct` または `pull_request` |
@@ -185,315 +313,166 @@ index 1234567..abcdefg 100644
 | `pr_title` | ❌ | `Apply Codex patch` | PRタイトル |
 | `pr_body` | ❌ | (自動生成) | PR本文 |
 | `run_tests` | ✅ | `skip` | `run` または `skip` |
-| `test_command` | ❌ | (空) | テストコマンド |
+| `test_command` | ❌ | (空) | テストコマンド（`run_tests=run`の場合） |
 
-**使用例:**
-
-```yaml
-# GitHubのActions UIから手動実行
-# または以下のようにワークフロー内から呼び出し
-jobs:
-  apply-patch:
-    uses: ./.github/workflows/apply-codex-patch.yml
-    with:
-      target_repository: 'your-org/your-repo'
-      target_branch: 'main'
-      patch_file: 'patches/feature-x.patch'
-      push_strategy: 'pull_request'
-```
-
-#### 複数パッチの一括適用
-
-ワークフロー: `.github/workflows/apply-batch-patches.yml`
-
-**入力パラメータ:**
+### 複数パッチ一括適用ワークフロー
 
 | パラメータ | 必須 | デフォルト | 説明 |
 |-----------|------|-----------|------|
-| `target_repository` | ❌ | (空) | 適用先リポジトリ |
+| `target_repository` | ❌ | (このリポジトリ) | 適用先リポジトリ |
 | `target_branch` | ✅ | `main` | 適用先ブランチ |
 | `patch_files` | ✅ | (空) | パッチファイルのリスト（改行またはカンマ区切り） |
 | `push_strategy` | ✅ | `pull_request` | `direct` または `pull_request` |
 | `commit_message` | ✅ | `Apply multiple Codex patches` | コミットメッセージ |
+| `pr_title` | ❌ | `Apply multiple Codex patches` | PRタイトル |
 | `fail_fast` | ✅ | `true` | 失敗時に即座に停止するか |
 | `run_tests` | ✅ | `skip` | テスト実行の有無 |
-
-**使用例:**
-
-```
-# patch_files に以下のように入力:
-patches/feature-a.patch
-patches/feature-b.patch
-patches/bugfix-c.patch
-
-# またはカンマ区切り:
-patches/feature-a.patch,patches/feature-b.patch,patches/bugfix-c.patch
-```
+| `test_command` | ❌ | (空) | テストコマンド |
 
 ---
 
 ## 🔧 高度な使い方
 
-### 複数パッチのバッチ適用（CLI）
+### オプション: GitHub Codespacesを使用
 
-バッチ設定ファイルを作成：
+もしローカル環境のような体験が欲しい場合（ただし完全にクラウド上）：
 
-```json
-{
-  "description": "複数機能を一括適用",
-  "targetRepository": "your-org/your-repo",
-  "targetBranch": "develop",
-  "patches": [
-    {
-      "file": "patches/feature-a.patch",
-      "target": ".",
-      "description": "機能Aを追加"
-    },
-    {
-      "file": "patches/feature-b.patch",
-      "target": ".",
-      "description": "機能Bを追加"
-    }
-  ],
-  "options": {
-    "failFast": true,
-    "runTests": true,
-    "testCommand": "npm test"
-  }
-}
-```
+1. このリポジトリで「Code」→「Codespaces」→「Create codespace on main」
+2. ブラウザでVS Codeが起動
+3. ターミナルでCLIツールを使用可能
+   ```bash
+   ./tools/patch-cli.sh validate patches/my-patch.patch
+   ./tools/patch-cli.sh apply patches/my-patch.patch --check
+   ```
+4. ファイルを編集してコミット＆プッシュ
 
-適用：
-
-```bash
-./tools/patch-cli.sh batch patches/batch-config.json
-```
-
-### 外部リポジトリへのパッチ適用
-
-別のリポジトリにパッチを適用する場合は、Personal Access Token (PAT) が必要です。
-
-#### 1. PATの作成
-
-1. GitHub の [Settings > Developer settings > Personal access tokens](https://github.com/settings/tokens) を開く
-2. `Generate new token (classic)` をクリック
-3. `repo` スコープを選択
-4. トークンを生成してコピー
-
-#### 2. シークレットの設定
-
-1. このリポジトリの `Settings > Secrets and variables > Actions` を開く
-2. `New repository secret` をクリック
-3. Name: `PATCH_APPLIER_TOKEN`
-4. Secret: 先ほどコピーしたトークン
-
-#### 3. ワークフローの実行
-
-`target_repository` に他のリポジトリ名を指定して実行します。
-
-### パッチの整理とディレクトリ構造
-
-推奨されるディレクトリ構造：
-
-```
-patches/
-├── owner_repo-a/
-│   ├── 2025-11-04_feature-x.patch
-│   ├── 2025-11-04_feature-x.meta.json
-│   └── 2025-11-05_bugfix-y.patch
-├── owner_repo-b/
-│   └── 2025-11-04_update-docs.patch
-└── examples/
-    └── sample.patch
-```
-
-**ベストプラクティス:**
-- リポジトリごとにサブディレクトリを作成
-- ファイル名に日付を含める（`YYYY-MM-DD_description.patch`）
-- メタデータファイル（`.meta.json`）で追加情報を管理
-- 適用済みパッチは別ディレクトリ（`applied/`）に移動
-
-### テストの自動実行
-
-パッチ適用後に自動的にテストを実行する設定：
-
-```yaml
-# GitHub Actions UIで以下を設定
-run_tests: run
-test_command: |
-  npm install
-  npm test
-  npm run lint
-```
-
-または複数コマンド：
-
-```yaml
-test_command: |
-  set -e
-  echo "Running tests..."
-  npm ci
-  npm run build
-  npm test
-  npm run e2e
-```
+**でも基本的にはGitHub UIだけで十分です！**
 
 ---
 
-## 🔒 セキュリティとベストプラクティス
+## ❓ FAQ
 
-### セキュリティ
+### Q: ローカルにgitやBashがありません。使えますか？
+**A:** はい！このシステムはローカル環境を一切必要としません。ブラウザだけで全て完結します。
 
-1. **PATの管理**: Personal Access Tokenは必ずGitHub Secretsに保存
-2. **最小権限の原則**: 必要最小限のスコープのみを付与
-3. **パッチの検証**: 適用前に必ず内容を確認
-4. **テストの実行**: 本番環境への適用前にテストを実行
+### Q: CLIツールは使わなくていいですか？
+**A:** はい。CLIツールはオプションです。GitHub UIとGitHub Actionsだけで全機能を使用できます。
 
-### ベストプラクティス
+### Q: パッチファイルをどうやって作成しますか？
+**A:** GitHub UIの「Add file」→「Create new file」から作成し、Codexの出力を貼り付けるだけです。
 
-1. **段階的な適用**
-   - まず開発ブランチで試す
-   - テストを実行して確認
-   - レビュー後に本番ブランチへ
+### Q: 複数のリポジトリに同じパッチを適用できますか？
+**A:** はい。Personal Access Tokenを設定すれば、任意のリポジトリに適用できます。
 
-2. **パッチの管理**
-   - 明確な命名規則を使用
-   - メタデータファイルで追跡
-   - 適用済みパッチを整理
+### Q: パッチ適用に失敗したらどうなりますか？
+**A:** ワークフローが失敗し、対象リポジトリには何も変更されません。Actionsのログで詳細を確認できます。
 
-3. **コードレビュー**
-   - PR作成モードを使用
-   - レビュー後にマージ
-   - 変更履歴を維持
+### Q: 適用前にテストできますか？
+**A:** はい。`run_tests` パラメータを `run` に設定し、`test_command` にテストコマンドを指定してください。テストが失敗すればパッチは適用されません。
 
-4. **エラーハンドリング**
-   - `fail_fast` オプションを適切に設定
-   - ロールバック手順を用意
-   - ログを確認
+### Q: 既存のワークフローを壊さないか心配です
+**A:** `push_strategy: pull_request` を使用すれば、PR経由でレビューしてからマージできるので安全です。
+
+### Q: パッチが古くなって適用できない場合は？
+**A:** ワークフローが失敗します。その場合はCodexに最新のコードベースでパッチを再生成してもらってください。
 
 ---
 
-## 🐛 トラブルシューティング
+## 🎯 ベストプラクティス
 
-### パッチ適用に失敗する
+### 1. 段階的な適用
+- まず開発ブランチ（`develop`）で試す
+- `push_strategy: pull_request` でPR作成
+- レビュー後にマージ
+- その後、本番ブランチ（`main`）に適用
 
-**原因:** パッチとターゲットコードのバージョンが一致していない
+### 2. パッチの命名
+- 日付を含める: `2025-11-04_description.patch`
+- 内容が分かる説明: `fix-validation-bug.patch`
+- リポジトリごとにフォルダ分け
 
-**解決策:**
-```bash
-# ドライランで確認
-./tools/patch-cli.sh apply patches/my-patch.patch --check
+### 3. テストの活用
+- 重要な変更には `run_tests: run` を使用
+- テストコマンド例:
+  ```bash
+  npm ci && npm test
+  pytest tests/
+  make test
+  ```
 
-# 3-wayマージを試す
-./tools/patch-cli.sh apply patches/my-patch.patch --3way
+### 4. コミットメッセージ
+- Conventional Commits形式を推奨:
+  ```
+  feat: add new feature
+  fix: resolve bug in validation
+  docs: update README
+  style: format code
+  refactor: restructure components
+  test: add unit tests
+  chore: update dependencies
+  ```
 
-# 手動で適用してパッチを再生成
-```
-
-### GitHub Actionsでトークンエラー
-
-**原因:** Personal Access Tokenが設定されていない、または権限が不足
-
-**解決策:**
-1. `PATCH_APPLIER_TOKEN` がRepository Secretsに設定されているか確認
-2. トークンに `repo` スコープがあるか確認
-3. トークンが有効期限内か確認
-
-### パッチファイルが見つからない
-
-**原因:** パッチファイルがコミットされていない
-
-**解決策:**
-```bash
-# パッチファイルをコミット
-git add patches/
-git commit -m "Add patch files"
-git push
-
-# ワークフローを再実行
-```
+### 5. エラーハンドリング
+- バッチ適用時は `fail_fast: false` で全パッチを試行
+- 失敗したパッチだけ後で個別に対応
 
 ---
 
-## 📚 リファレンス
+## 🔒 セキュリティ
 
-### CLIコマンド一覧
+### Personal Access Token の管理
+- ✅ 必要最小限のスコープのみ付与（`repo`のみ）
+- ✅ GitHub Secretsに保存（コードには含めない）
+- ✅ 定期的に更新
+- ✅ 不要になったら削除
 
-```bash
-# ヘルプを表示
-./tools/patch-cli.sh help
-
-# バージョンを表示
-./tools/patch-cli.sh version
-
-# パッチを検証
-./tools/patch-cli.sh validate <patch_file>
-
-# パッチを適用
-./tools/patch-cli.sh apply <patch_file> [options]
-
-# パッチ一覧を表示
-./tools/patch-cli.sh list [directory]
-
-# パッチ情報を表示
-./tools/patch-cli.sh info <patch_file>
-
-# パッチを作成
-./tools/patch-cli.sh create <output_file>
-
-# バッチ適用
-./tools/patch-cli.sh batch <config_file>
-```
-
-### パッチテンプレート生成
-
-```bash
-./scripts/generate-patch-template.sh \
-  -n <patch_name> \
-  -r <owner/repo> \
-  -b <branch> \
-  -d <description> \
-  -o <output_dir>
-```
-
----
-
-## 🤝 貢献
-
-貢献を歓迎します！以下の手順でご参加ください：
-
-1. このリポジトリをフォーク
-2. フィーチャーブランチを作成 (`git checkout -b feature/amazing-feature`)
-3. 変更をコミット (`git commit -m 'Add amazing feature'`)
-4. ブランチにプッシュ (`git push origin feature/amazing-feature`)
-5. Pull Requestを作成
-
----
-
-## 📄 ライセンス
-
-このプロジェクトはMITライセンスの下で公開されています。
-
----
-
-## 🙏 謝辞
-
-- [GitHub Actions](https://github.com/features/actions) - CI/CDプラットフォーム
-- [Codex](https://openai.com/blog/openai-codex) - AIコーディング支援
-- コミュニティの皆様
+### パッチの検証
+- ✅ 適用前にパッチの内容を必ず確認
+- ✅ 信頼できないソースのパッチは使用しない
+- ✅ PR経由でチームレビューを推奨
+- ✅ テストを実行して動作確認
 
 ---
 
 ## 📞 サポート
 
-問題が発生した場合は、[Issues](https://github.com/your-username/CodexPatch/issues)で報告してください。
+問題が発生した場合：
+
+1. **Actionsログを確認**
+   - 「Actions」タブで失敗したワークフローを開く
+   - 詳細なエラーメッセージを確認
+
+2. **Issueを作成**
+   - https://github.com/your-username/CodexPatch/issues
+   - エラーメッセージとパッチファイルを含める
+
+3. **よくある問題**
+   - パッチが古い → Codexに最新コードでパッチを再生成依頼
+   - 権限エラー → Personal Access Tokenの設定を確認
+   - ファイルが見つからない → patch_fileのパスを確認
+
+---
+
+## 📄 ライセンス
+
+MIT License - 自由に使用、改変、配布できます。
+
+---
+
+## 🙏 謝辞
+
+- [GitHub Actions](https://github.com/features/actions) - クラウドCI/CDプラットフォーム
+- AI Coding Tools - Codex, Claude, GitHub Copilot
+- オープンソースコミュニティ
 
 ---
 
 <div align="center">
 
-**CodexPatch で AI 生成コードの適用を自動化しましょう！**
+**🌟 ローカル環境不要！ブラウザだけでパッチ適用を自動化 🌟**
 
-Made with ❤️ by the CodexPatch Team
+Made with ❤️ for Cloud-Native Development
+
+[始める](#クイックスタート) | [ドキュメント](#詳細な使い方) | [FAQ](#faq)
 
 </div>

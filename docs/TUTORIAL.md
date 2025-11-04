@@ -1,138 +1,130 @@
 # CodexPatch チュートリアル
 
-このチュートリアルでは、CodexPatchを使った実際のワークフローを段階的に説明します。
+このチュートリアルでは、**ブラウザだけ**でCodexPatchを使った実際のワークフローを段階的に説明します。
+
+## 🎯 このチュートリアルについて
+
+- ✅ ローカル環境不要
+- ✅ ブラウザだけで完結
+- ✅ 実践的な例で学習
+- ✅ 段階的に理解を深める
 
 ## 目次
 
-1. [基本的な使い方](#基本的な使い方)
+1. [基本的な使い方（ブラウザのみ）](#基本的な使い方ブラウザのみ)
 2. [単一パッチの適用](#単一パッチの適用)
 3. [複数パッチの一括適用](#複数パッチの一括適用)
 4. [他のリポジトリへの適用](#他のリポジトリへの適用)
 5. [実践例](#実践例)
+6. [オプション: CLIツールの使用](#オプション-cliツールの使用)
 
 ---
 
-## 基本的な使い方
+## 基本的な使い方（ブラウザのみ）
 
 ### シナリオ: READMEの更新パッチを適用
 
 あなたのプロジェクトのREADMEを更新したいとします。Codexに依頼して差分を生成してもらいました。
 
-#### ステップ1: パッチテンプレートの生成
+> **注意**: このセクションは完全にブラウザだけで完結します。git cloneやコマンドライン操作は不要です。
 
-```bash
-./scripts/generate-patch-template.sh \
-  -n "update-readme-description" \
-  -r "myorg/myproject" \
-  -b "main" \
-  -d "Update README with better project description"
+#### ステップ1: Codexでパッチを生成
+
+**Codex / ChatGPT / Claudeに依頼:**
+
+```
+以下のファイルを編集してください：
+README.md
+
+変更内容：
+- プロジェクトの説明をより詳しくする
+- 主な機能リストを追加
+- インストール手順を明確化
+
+git diff形式で出力してください。
 ```
 
-出力:
-```
-[SUCCESS] テンプレートを作成しました:
-  パッチファイル: patches/myorg_myproject/2025-11-04_update-readme-description.patch
-  メタデータ: patches/myorg_myproject/2025-11-04_update-readme-description.meta.json
-```
-
-#### ステップ2: Codexで生成された差分をコピー
-
-Codexから以下のような出力を得たとします：
-
+**Codexの出力例:**
 ```diff
 diff --git a/README.md b/README.md
-index abc123..def456 100644
+index 1234567..abcdefg 100644
 --- a/README.md
 +++ b/README.md
-@@ -1,6 +1,8 @@
+@@ -1,6 +1,12 @@
  # MyProject
  
 -A simple web application.
 +A powerful web application built with modern technologies.
 +
-+MyProject helps teams collaborate more effectively with real-time updates and AI-powered suggestions.
++MyProject helps teams collaborate more effectively with:
++- Real-time updates
++- AI-powered suggestions
++- Seamless integrations
  
- ## Features
+ ## Installation
++
++Run `npm install` to get started.
 ```
 
-この差分を `patches/myorg_myproject/2025-11-04_update-readme-description.patch` に貼り付けます。
+#### ステップ2: GitHub UIでパッチファイルを作成
 
-#### ステップ3: パッチを検証
+1. **CodexPatchリポジトリをブラウザで開く**
+   - `https://github.com/YOUR-USERNAME/CodexPatch`
 
-```bash
-./tools/patch-cli.sh validate patches/myorg_myproject/2025-11-04_update-readme-description.patch
-```
+2. **patchesフォルダに移動**
+   - ファイルリストから `patches/` をクリック
 
-出力:
-```
-[INFO] パッチファイルを検証中: patches/myorg_myproject/2025-11-04_update-readme-description.patch
-[SUCCESS] パッチファイルは有効です
-  ファイル数: 1
-  追加行数: 4
-  削除行数: 1
-  ファイルサイズ: 342 bytes
-```
+3. **サブフォルダを作成（整理のため）**
+   - 「Add file」→「Create new file」
+   - ファイル名欄に `myorg_myproject/.gitkeep` と入力
+   - （スラッシュを入れるとフォルダが自動作成されます）
+   - 空ファイルとしてコミット
 
-#### ステップ4: パッチ情報の確認
+4. **パッチファイルを作成**
+   - `patches/myorg_myproject/` に移動
+   - 「Add file」→「Create new file」
+   - ファイル名: `2025-11-04_update-readme-description.patch`
+   - エディタにCodexの出力を貼り付け
+   - 「Commit new file」をクリック
 
-```bash
-./tools/patch-cli.sh info patches/myorg_myproject/2025-11-04_update-readme-description.patch
-```
+#### ステップ3: GitHub Actionsでパッチを適用
 
-#### ステップ5: ドライラン
+1. **Actionsタブを開く**
+   - リポジトリのトップページで「Actions」タブをクリック
 
-実際に適用する前に、問題がないか確認：
+2. **ワークフローを選択**
+   - 左サイドバーから「Codexパッチ適用」をクリック
+   - 「Run workflow」ボタンをクリック
 
-```bash
-# ターゲットリポジトリのディレクトリに移動
-cd /path/to/myproject
+3. **パラメータを入力**
+   ```
+   target_repository: myorg/myproject
+   target_branch: main
+   patch_file: patches/myorg_myproject/2025-11-04_update-readme-description.patch
+   push_strategy: pull_request
+   commit_message: docs: update README description
+   pr_title: Update README with better description
+   run_tests: skip
+   ```
 
-# ドライランを実行
-/path/to/CodexPatch/tools/patch-cli.sh apply \
-  /path/to/CodexPatch/patches/myorg_myproject/2025-11-04_update-readme-description.patch \
-  --check
-```
+4. **ワークフローを実行**
+   - 「Run workflow」をクリック
+   - 実行状況を確認（約1-2分）
 
-出力:
-```
-[INFO] ドライラン実行中（実際の変更は行いません）
-[INFO] 適用するパッチの統計:
- README.md | 5 +++--
- 1 file changed, 4 insertions(+), 1 deletion(-)
+#### ステップ4: Pull Requestを確認してマージ
 
-[SUCCESS] パッチは問題なく適用できます
-```
+1. **対象リポジトリを開く**
+   - `https://github.com/myorg/myproject`
+   - 「Pull requests」タブをクリック
 
-#### ステップ6: パッチを実際に適用
+2. **PRの内容を確認**
+   - 新しく作成されたPRを開く
+   - 「Files changed」タブで差分を確認
 
-```bash
-/path/to/CodexPatch/tools/patch-cli.sh apply \
-  /path/to/CodexPatch/patches/myorg_myproject/2025-11-04_update-readme-description.patch
-```
-
-出力:
-```
-[INFO] パッチを適用中
-[INFO] 適用するパッチの統計:
- README.md | 5 +++--
- 1 file changed, 4 insertions(+), 1 deletion(-)
-
-[SUCCESS] パッチを適用しました
-[INFO] 変更されたファイル:
- M README.md
-```
-
-#### ステップ7: 変更を確認してコミット
-
-```bash
-# 変更を確認
-git diff
-
-# コミット
-git add README.md
-git commit -m "docs: update README description"
-git push
-```
+3. **マージ**
+   - 問題なければ「Merge pull request」
+   - 「Confirm merge」
+   - 完了！🎉
 
 ---
 
@@ -488,37 +480,103 @@ git push
 
 ## トラブルシューティング Tips
 
-### パッチが適用できない場合
+### パッチが適用できない場合（GitHub Actions）
 
-```bash
-# 1. 詳細な情報を表示
-./tools/patch-cli.sh apply patches/my-patch.patch --verbose
+1. **Actionsログを確認**
+   - 「Actions」タブで失敗したワークフローを開く
+   - 各ステップの詳細ログを確認
+   - エラーメッセージをコピー
 
-# 2. 3-way マージを試す
-./tools/patch-cli.sh apply patches/my-patch.patch --3way
-
-# 3. それでもダメな場合は手動で適用
-git apply --reject patches/my-patch.patch
-# .rej ファイルを確認して手動で修正
-```
+2. **よくある原因**
+   - **パッチが古い**: 対象コードが変更されている
+     - 解決: Codexに最新のコードでパッチを再生成依頼
+   - **ファイルパスが間違っている**: `patch_file` パラメータが正しくない
+     - 解決: パッチファイルのパスをコピー＆ペースト
+   - **権限エラー**: PATが正しく設定されていない
+     - 解決: Secret `PATCH_APPLIER_TOKEN` を確認
 
 ### GitHub Actions が失敗する場合
 
 1. **ログを確認**: Actions タブで詳細ログを確認
-2. **ローカルで再現**: 同じ環境でローカルテスト
-3. **パッチファイルを確認**: ファイルが正しくコミットされているか
-4. **権限を確認**: PATが正しく設定されているか
+2. **パッチファイルを確認**: ファイルが正しくコミットされているか
+3. **権限を確認**: PATが正しく設定されているか（外部リポジトリの場合）
+4. **パラメータを確認**: 入力パラメータが正しいか
+
+---
+
+## オプション: CLIツールの使用
+
+> **注意**: このセクションはオプションです。ローカル環境がある場合や、GitHub Codespacesを使用する場合のみ参照してください。
+
+### GitHub Codespacesで使用
+
+1. リポジトリページで「Code」→「Codespaces」→「Create codespace」
+2. ブラウザでVS Codeが起動
+3. ターミナルでCLIコマンドを使用可能
+
+### CLIコマンド例
+
+```bash
+# パッチを検証
+./tools/patch-cli.sh validate patches/my-patch.patch
+
+# パッチの詳細情報を表示
+./tools/patch-cli.sh info patches/my-patch.patch
+
+# ドライラン（適用テスト）
+./tools/patch-cli.sh apply patches/my-patch.patch --check
+
+# 実際に適用
+./tools/patch-cli.sh apply patches/my-patch.patch
+
+# パッチ一覧を表示
+./tools/patch-cli.sh list patches/
+
+# 現在の変更からパッチを作成
+./tools/patch-cli.sh create patches/my-changes.patch
+```
+
+詳細は [CLI リファレンス](../tools/patch-cli.sh) を参照してください。
 
 ---
 
 ## まとめ
 
-このチュートリアルでは、CodexPatchの主要な使い方を実践的な例で学びました。
+このチュートリアルでは、**ブラウザだけで完結する**CodexPatchの主要な使い方を実践的な例で学びました。
 
 **重要なポイント**:
-1. 必ず検証してからパッチを適用
-2. ドライランで安全性を確認
-3. テストを実行して動作確認
-4. PR経由で変更をレビュー
+1. ✅ ローカル環境不要でパッチを適用できる
+2. ✅ GitHub UIでパッチファイルを作成
+3. ✅ GitHub Actionsで自動適用
+4. ✅ PR経由で安全にレビュー＆マージ
 
-次のステップとして、[README.md](../README.md) で高度な機能を確認してください。
+**このシステムの利点**:
+- 💻 どこからでもアクセス可能
+- 🚀 すぐに使い始められる
+- 🔒 安全（PR経由でレビュー）
+- 📊 透明性が高い（すべてGitHub上で追跡可能）
+
+## 次のステップ
+
+1. **実際に試してみる**
+   - [クラウド完全ガイド](CLOUD_ONLY_GUIDE.md)で詳細な手順を確認
+   - サンプルパッチで練習
+
+2. **チームで活用**
+   - チームメンバーに共有
+   - レビュープロセスに組み込む
+
+3. **さらに学ぶ**
+   - [README.md](../README.md) - 完全なリファレンス
+   - [ARCHITECTURE.md](ARCHITECTURE.md) - システム設計
+   - [CLOUD_ONLY_GUIDE.md](CLOUD_ONLY_GUIDE.md) - 完全クラウドガイド
+
+---
+
+<div align="center">
+
+**📖 Happy Patching with Cloud-Native Workflow! 🚀**
+
+[メインREADMEに戻る](../README.md) | [クラウド完全ガイド](CLOUD_ONLY_GUIDE.md) | [アーキテクチャ](ARCHITECTURE.md)
+
+</div>
