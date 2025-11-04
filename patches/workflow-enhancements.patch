@@ -1,0 +1,665 @@
+diff --git a/.github/workflows/apply-batch-patches.yml b/.github/workflows/apply-batch-patches.yml
+new file mode 100644
+index 0000000..78ff738
+--- /dev/null
++++ b/.github/workflows/apply-batch-patches.yml
+@@ -0,0 +1,353 @@
++name: 複数パッチの一括適用
++
++on:
++  workflow_dispatch:
++    inputs:
++      target_repository:
++        description: 'パッチを適用するリポジトリ (owner/name)。空欄時はこのリポジトリ'
++        required: false
++        default: ''
++      target_branch:
++        description: 'パッチを適用するブランチ名'
++        required: true
++        default: 'main'
++      patch_files:
++        description: 'パッチファイルのリスト（改行またはカンマ区切り、例: patches/a.patch,patches/b.patch）'
++        required: true
++        default: ''
++      push_strategy:
++        description: 'direct: ターゲットブランチへ直接 push / pull_request: ブランチを切って PR 作成'
++        required: true
++        type: choice
++        default: 'pull_request'
++        options:
++          - pull_request
++          - direct
++      commit_message:
++        description: '作成するコミットメッセージ'
++        required: true
++        default: 'Apply multiple Codex patches'
++      pr_title:
++        description: 'PR タイトル (push_strategy = pull_request の場合)'
++        required: false
++        default: 'Apply multiple Codex patches'
++      pr_body:
++        description: 'PR 本文 (空欄の場合は自動生成)'
++        required: false
++        default: ''
++      fail_fast:
++        description: '1つでもパッチ適用に失敗したら即座に停止するか'
++        required: true
++        type: boolean
++        default: true
++      run_tests:
++        description: 'パッチ適用後にテストを実行するかどうか'
++        required: true
++        type: choice
++        default: 'skip'
++        options:
++          - skip
++          - run
++      test_command:
++        description: 'run_tests=run の場合に実行するテストコマンド'
++        required: false
++        default: ''
++
++jobs:
++  apply-patches:
++    runs-on: ubuntu-latest
++    env:
++      PATCH_REPOSITORY: ${{ github.repository }}
++      TARGET_REPOSITORY: ${{ github.event.inputs.target_repository != '' && github.event.inputs.target_repository || github.repository }}
++      TARGET_BRANCH: ${{ github.event.inputs.target_branch }}
++      PUSH_STRATEGY: ${{ github.event.inputs.push_strategy }}
++      COMMIT_MESSAGE: ${{ github.event.inputs.commit_message }}
++      FAIL_FAST: ${{ github.event.inputs.fail_fast }}
++      RUN_TESTS: ${{ github.event.inputs.run_tests }}
++      TEST_COMMAND: ${{ github.event.inputs.test_command }}
++    outputs:
++      patches_applied: ${{ steps.apply_patches.outputs.patches_applied }}
++      patches_failed: ${{ steps.apply_patches.outputs.patches_failed }}
++    steps:
++      - name: パッチリポジトリを取得
++        uses: actions/checkout@v4
++        with:
++          fetch-depth: 0
++          path: patch-repo
++
++      - name: パッチファイルリストを解析
++        id: parse_patches
++        run: |
++          # 改行またはカンマで区切られたパッチファイルリストを配列に変換
++          PATCH_INPUT="${{ github.event.inputs.patch_files }}"
++          
++          # 改行をカンマに統一
++          PATCH_INPUT=$(echo "$PATCH_INPUT" | tr '\n' ',')
++          
++          # 配列に変換してJSON形式で保存
++          echo "$PATCH_INPUT" | tr ',' '\n' | grep -v '^$' | jq -R -s -c 'split("\n") | map(select(length > 0))' > /tmp/patch_files.json
++          
++          echo "Patch files to apply:"
++          cat /tmp/patch_files.json
++          
++          PATCH_COUNT=$(jq 'length' /tmp/patch_files.json)
++          echo "patch_count=$PATCH_COUNT" >> "$GITHUB_OUTPUT"
++
++      - name: パッチファイルを検証
++        run: |
++          cd "$GITHUB_WORKSPACE/patch-repo"
++          
++          MISSING_FILES=()
++          while IFS= read -r patch_file; do
++            if [ ! -f "$patch_file" ]; then
++              echo "::error::パッチファイルが見つかりません: $patch_file"
++              MISSING_FILES+=("$patch_file")
++            else
++              echo "✓ 確認: $patch_file"
++            fi
++          done < <(jq -r '.[]' /tmp/patch_files.json)
++          
++          if [ ${#MISSING_FILES[@]} -gt 0 ]; then
++            echo "::error::以下のパッチファイルが見つかりませんでした:"
++            printf '%s\n' "${MISSING_FILES[@]}"
++            exit 1
++          fi
++
++      - name: 外部リポジトリ用トークンを確認
++        if: env.TARGET_REPOSITORY != env.PATCH_REPOSITORY
++        env:
++          TOKEN_AVAILABLE: ${{ secrets.PATCH_APPLIER_TOKEN }}
++        run: |
++          if [ -z "$TOKEN_AVAILABLE" ]; then
++            echo "::error::target_repository が別リポジトリの場合は PATCH_APPLIER_TOKEN シークレットに repo スコープの PAT を設定してください。" >&2
++            exit 1
++          fi
++
++      - name: 適用先リポジトリをチェックアウト
++        uses: actions/checkout@v4
++        with:
++          repository: ${{ env.TARGET_REPOSITORY }}
++          ref: ${{ env.TARGET_BRANCH }}
++          fetch-depth: 0
++          path: target-repo
++          token: ${{ secrets.PATCH_APPLIER_TOKEN != '' && secrets.PATCH_APPLIER_TOKEN || github.token }}
++
++      - name: 作業ブランチを準備
++        id: prepare_branch
++        working-directory: target-repo
++        run: |
++          WORKING_BRANCH="$TARGET_BRANCH"
++          if [ "$PUSH_STRATEGY" = "pull_request" ]; then
++            WORKING_BRANCH="codex-batch-patch/${GITHUB_RUN_ID}"
++            git checkout -b "$WORKING_BRANCH"
++          fi
++          echo "branch=$WORKING_BRANCH" >> "$GITHUB_OUTPUT"
++
++      - name: パッチを順次適用
++        id: apply_patches
++        working-directory: target-repo
++        run: |
++          PATCHES_APPLIED=0
++          PATCHES_FAILED=0
++          FAILED_PATCHES=()
++          
++          echo "=== パッチ適用開始 ==="
++          echo ""
++          
++          while IFS= read -r patch_file; do
++            PATCH_PATH="$GITHUB_WORKSPACE/patch-repo/$patch_file"
++            
++            echo "----------------------------------------"
++            echo "パッチを適用: $patch_file"
++            echo "----------------------------------------"
++            
++            # パッチの統計を表示
++            if git apply --stat "$PATCH_PATH" 2>/dev/null; then
++              echo ""
++            fi
++            
++            # パッチを適用
++            if git apply --apply --whitespace=fix "$PATCH_PATH" 2>&1; then
++              echo "✓ 成功: $patch_file"
++              PATCHES_APPLIED=$((PATCHES_APPLIED + 1))
++            else
++              echo "✗ 失敗: $patch_file"
++              PATCHES_FAILED=$((PATCHES_FAILED + 1))
++              FAILED_PATCHES+=("$patch_file")
++              
++              if [ "$FAIL_FAST" = "true" ]; then
++                echo "::error::パッチ適用に失敗しました: $patch_file"
++                echo "fail_fast が有効なため処理を中断します"
++                exit 1
++              fi
++            fi
++            
++            echo ""
++          done < <(jq -r '.[]' /tmp/patch_files.json)
++          
++          echo "=== パッチ適用結果 ==="
++          echo "適用成功: $PATCHES_APPLIED"
++          echo "適用失敗: $PATCHES_FAILED"
++          
++          if [ $PATCHES_FAILED -gt 0 ]; then
++            echo ""
++            echo "失敗したパッチ:"
++            printf '%s\n' "${FAILED_PATCHES[@]}"
++          fi
++          
++          echo "patches_applied=$PATCHES_APPLIED" >> "$GITHUB_OUTPUT"
++          echo "patches_failed=$PATCHES_FAILED" >> "$GITHUB_OUTPUT"
++          
++          if [ $PATCHES_FAILED -gt 0 ] && [ "$FAIL_FAST" = "false" ]; then
++            echo "::warning::一部のパッチ適用に失敗しましたが、処理を続行しました"
++          fi
++
++      - name: 作業ツリーの状態を表示
++        working-directory: target-repo
++        run: |
++          echo "=== 変更されたファイル ==="
++          git status --short
++          echo ""
++          echo "=== 変更の統計 ==="
++          git diff --stat
++
++      - name: テストを実行
++        if: env.RUN_TESTS == 'run'
++        working-directory: target-repo
++        run: |
++          if [ -z "$TEST_COMMAND" ]; then
++            echo "::error::run_tests=run の場合は test_command を指定してください。" >&2
++            exit 1
++          fi
++          echo "テストコマンドを実行: $TEST_COMMAND"
++          eval "$TEST_COMMAND"
++
++      - name: コミットを作成
++        id: create_commit
++        working-directory: target-repo
++        run: |
++          if [ -z "$(git status --short)" ]; then
++            echo "has_changes=false" >> "$GITHUB_OUTPUT"
++            echo "パッチ適用後の差分がありません。コミットをスキップします。"
++            exit 0
++          fi
++          
++          git config user.name "github-actions[bot]"
++          git config user.email "github-actions[bot]@users.noreply.github.com"
++          git add -A
++          
++          # コミットメッセージに適用されたパッチ情報を追加
++          COMMIT_MSG="$COMMIT_MESSAGE"$'\n\n'"Applied patches:"
++          
++          while IFS= read -r patch_file; do
++            COMMIT_MSG="$COMMIT_MSG"$'\n'"- $patch_file"
++          done < <(jq -r '.[]' /tmp/patch_files.json)
++          
++          COMMIT_MSG="$COMMIT_MSG"$'\n\n'"Patches applied: ${{ steps.apply_patches.outputs.patches_applied }}"
++          if [ "${{ steps.apply_patches.outputs.patches_failed }}" != "0" ]; then
++            COMMIT_MSG="$COMMIT_MSG"$'\n'"Patches failed: ${{ steps.apply_patches.outputs.patches_failed }}"
++          fi
++          
++          git commit -m "$COMMIT_MSG"
++          echo "has_changes=true" >> "$GITHUB_OUTPUT"
++
++      - name: 変更をプッシュ
++        if: steps.create_commit.outputs.has_changes == 'true'
++        working-directory: target-repo
++        env:
++          PUSH_BRANCH: ${{ steps.prepare_branch.outputs.branch }}
++        run: git push origin HEAD:"$PUSH_BRANCH"
++
++      - name: Pull Request を作成
++        if: steps.create_commit.outputs.has_changes == 'true' && env.PUSH_STRATEGY == 'pull_request'
++        uses: actions/github-script@v7
++        with:
++          github-token: ${{ secrets.PATCH_APPLIER_TOKEN != '' && secrets.PATCH_APPLIER_TOKEN || github.token }}
++          script: |
++            const fs = require('fs');
++            const targetRepository = process.env.TARGET_REPOSITORY;
++            const [owner, repo] = targetRepository.split('/');
++            const base = process.env.TARGET_BRANCH;
++            const head = process.env.WORKING_BRANCH;
++            const prTitle = process.env.PR_TITLE || 'Apply multiple Codex patches';
++            const prBodyInput = process.env.PR_BODY_INPUT || '';
++            
++            // パッチファイルリストを読み込み
++            const patchFiles = JSON.parse(fs.readFileSync('/tmp/patch_files.json', 'utf8'));
++            
++            const patchesList = patchFiles.map(f => `- \`${f}\``).join('\n');
++            
++            const defaultBody = [
++              '## 📦 複数のCodexパッチを自動適用しました',
++              '',
++              '### 適用されたパッチ',
++              patchesList,
++              '',
++              '### 統計',
++              `- 適用成功: ${process.env.PATCHES_APPLIED}`,
++              `- 適用失敗: ${process.env.PATCHES_FAILED}`,
++              '',
++              '### メタデータ',
++              `- Patch repository: ${process.env.PATCH_REPOSITORY}`,
++              `- Base branch: ${base}`,
++              `- Head branch: ${head}`,
++              `- Workflow run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
++            ].join('\n');
++            
++            const body = prBodyInput.trim().length > 0 ? prBodyInput : defaultBody;
++            
++            // 既存のPRをチェック
++            const existing = await github.rest.pulls.list({
++              owner,
++              repo,
++              head: `${owner}:${head}`,
++              base,
++              state: 'open'
++            });
++            
++            if (existing.data.length > 0) {
++              core.info(`既存の Pull Request が見つかりました: ${existing.data[0].html_url}`);
++              // PR本文を更新
++              await github.rest.pulls.update({
++                owner,
++                repo,
++                pull_number: existing.data[0].number,
++                body
++              });
++              return;
++            }
++            
++            // 新しいPRを作成
++            const pr = await github.rest.pulls.create({
++              owner,
++              repo,
++              base,
++              head,
++              title: prTitle,
++              body
++            });
++            
++            core.info(`Pull Request created: ${pr.data.html_url}`);
++            core.setOutput('pr_url', pr.data.html_url);
++        env:
++          TARGET_REPOSITORY: ${{ env.TARGET_REPOSITORY }}
++          TARGET_BRANCH: ${{ env.TARGET_BRANCH }}
++          WORKING_BRANCH: ${{ steps.prepare_branch.outputs.branch }}
++          PATCH_REPOSITORY: ${{ env.PATCH_REPOSITORY }}
++          PR_TITLE: ${{ github.event.inputs.pr_title }}
++          PR_BODY_INPUT: ${{ github.event.inputs.pr_body }}
++          PATCHES_APPLIED: ${{ steps.apply_patches.outputs.patches_applied }}
++          PATCHES_FAILED: ${{ steps.apply_patches.outputs.patches_failed }}
++
++      - name: 結果サマリー
++        if: always()
++        run: |
++          echo "## パッチ適用結果" >> $GITHUB_STEP_SUMMARY
++          echo "" >> $GITHUB_STEP_SUMMARY
++          echo "| 項目 | 値 |" >> $GITHUB_STEP_SUMMARY
++          echo "|------|-----|" >> $GITHUB_STEP_SUMMARY
++          echo "| 対象リポジトリ | $TARGET_REPOSITORY |" >> $GITHUB_STEP_SUMMARY
++          echo "| 対象ブランチ | $TARGET_BRANCH |" >> $GITHUB_STEP_SUMMARY
++          echo "| 適用成功 | ${{ steps.apply_patches.outputs.patches_applied }} |" >> $GITHUB_STEP_SUMMARY
++          echo "| 適用失敗 | ${{ steps.apply_patches.outputs.patches_failed }} |" >> $GITHUB_STEP_SUMMARY
++          echo "| コミット作成 | ${{ steps.create_commit.outputs.has_changes == 'true' && '✓' || '✗' }} |" >> $GITHUB_STEP_SUMMARY
+diff --git a/.github/workflows/apply-codex-patch.yml b/.github/workflows/apply-codex-patch.yml
+index 4ead1fb..e9b6962 100644
+--- a/.github/workflows/apply-codex-patch.yml
++++ b/.github/workflows/apply-codex-patch.yml
+@@ -3,163 +3,211 @@ name: Codexパッチ適用
+ on:
+   workflow_dispatch:
+     inputs:
++      target_repository:
++        description: 'パッチを適用するリポジトリ (owner/name)。空欄時はこのリポジトリ'
++        required: false
++        default: ''
+       target_branch:
+         description: 'パッチを適用するブランチ名'
+         required: true
+         default: 'main'
+-      source_branch:
+-        description: 'パッチファイルを取得するブランチ名（省略時はワークフローを実行したブランチ）'
+-        required: false
+-        default: ''
+       patch_file:
+-        description: 'リポジトリルートからのパッチファイルへのパス（例: patch）'
++        description: 'patch-repo からのパッチファイルへの相対パス (例: patches/whereabouts_TEST/index.patch)'
+         required: true
+         default: 'patch'
++      push_strategy:
++        description: 'direct: ターゲットブランチへ直接 push / pull_request: ブランチを切って PR 作成'
++        required: true
++        type: choice
++        default: 'pull_request'
++        options:
++          - pull_request
++          - direct
++      commit_message:
++        description: '作成するコミットメッセージ'
++        required: true
++        default: 'Apply Codex patch'
++      pr_title:
++        description: 'PR タイトル (push_strategy = pull_request の場合)'
++        required: false
++        default: 'Apply Codex patch'
++      pr_body:
++        description: 'PR 本文 (空欄の場合は自動生成)'
++        required: false
++        default: ''
++      run_tests:
++        description: 'パッチ適用後にテストを実行するかどうか'
++        required: true
++        type: choice
++        default: 'skip'
++        options:
++          - skip
++          - run
++      test_command:
++        description: 'run_tests=run の場合に実行するテストコマンド'
++        required: false
++        default: ''
+ 
+ jobs:
+   apply-patch:
+     runs-on: ubuntu-latest
+-
++    env:
++      PATCH_REPOSITORY: ${{ github.repository }}
++      PATCH_FILE: ${{ github.event.inputs.patch_file }}
++      TARGET_REPOSITORY: ${{ github.event.inputs.target_repository != '' && github.event.inputs.target_repository || github.repository }}
++      TARGET_BRANCH: ${{ github.event.inputs.target_branch }}
++      PUSH_STRATEGY: ${{ github.event.inputs.push_strategy }}
++      COMMIT_MESSAGE: ${{ github.event.inputs.commit_message }}
++      RUN_TESTS: ${{ github.event.inputs.run_tests }}
++      TEST_COMMAND: ${{ github.event.inputs.test_command }}
+     steps:
+-      - name: ターゲットブランチをチェックアウト
++      - name: パッチを取得
+         uses: actions/checkout@v4
+         with:
+-          ref: ${{ github.event.inputs.target_branch }}
+           fetch-depth: 0
++          path: patch-repo
+ 
+-      - name: パッチファイルを取得
+-        env:
+-          PATCH_FILE: ${{ github.event.inputs.patch_file }}
+-          SOURCE_BRANCH_INPUT: ${{ github.event.inputs.source_branch }}
+-          DEFAULT_SOURCE_BRANCH: ${{ github.ref_name }}
++      - name: パッチファイルを検証
++        id: patch_file
+         run: |
+-          SOURCE_BRANCH="$SOURCE_BRANCH_INPUT"
+-          if [ -z "$SOURCE_BRANCH" ]; then
+-            SOURCE_BRANCH="$DEFAULT_SOURCE_BRANCH"
++          PATCH_PATH="$GITHUB_WORKSPACE/patch-repo/$PATCH_FILE"
++          if [ ! -f "$PATCH_PATH" ]; then
++            echo "::error::パッチファイルが見つかりません: $PATCH_PATH" >&2
++            exit 1
+           fi
++          echo "patch_path=$PATCH_PATH" >> "$GITHUB_OUTPUT"
+ 
+-          SOURCE_BRANCH="${SOURCE_BRANCH#refs/heads/}"
+-          SOURCE_BRANCH="${SOURCE_BRANCH#origin/}"
+-
+-          if ! git ls-remote --exit-code origin "refs/heads/$SOURCE_BRANCH" > /dev/null; then
+-            echo "指定されたソースブランチ $SOURCE_BRANCH が origin に存在しません。" >&2
++      - name: 外部リポジトリ用トークンを確認
++        if: env.TARGET_REPOSITORY != env.PATCH_REPOSITORY
++        env:
++          TOKEN_AVAILABLE: ${{ secrets.PATCH_APPLIER_TOKEN }}
++        run: |
++          if [ -z "$TOKEN_AVAILABLE" ]; then
++            echo "::error::target_repository が別リポジトリの場合は PATCH_APPLIER_TOKEN シークレットに repo スコープの PAT を設定してください。" >&2
+             exit 1
+           fi
+ 
+-          git fetch origin "$SOURCE_BRANCH"
++      - name: 適用先リポジトリをチェックアウト
++        uses: actions/checkout@v4
++        with:
++          repository: ${{ env.TARGET_REPOSITORY }}
++          ref: ${{ env.TARGET_BRANCH }}
++          fetch-depth: 0
++          path: target-repo
++          token: ${{ secrets.PATCH_APPLIER_TOKEN != '' && secrets.PATCH_APPLIER_TOKEN || github.token }}
+ 
+-          PATCH_PATH="$RUNNER_TEMP/codex.patch"
+-          if ! git show "origin/$SOURCE_BRANCH:$PATCH_FILE" > "$PATCH_PATH"; then
+-            echo "ブランチ $SOURCE_BRANCH に $PATCH_FILE が存在しません。" >&2
+-            exit 1
++      - name: 作業ブランチを準備
++        id: prepare_branch
++        working-directory: target-repo
++        run: |
++          WORKING_BRANCH="$TARGET_BRANCH"
++          if [ "$PUSH_STRATEGY" = "pull_request" ]; then
++            WORKING_BRANCH="codex-patch/${GITHUB_RUN_ID}"
++            git checkout -b "$WORKING_BRANCH"
+           fi
+-
+-          echo "パッチファイルを $SOURCE_BRANCH から取得しました。"
+-          echo "SOURCE_BRANCH=$SOURCE_BRANCH" >> "$GITHUB_ENV"
+-          echo "PATCH_PATH=$PATCH_PATH" >> "$GITHUB_ENV"
++          echo "branch=$WORKING_BRANCH" >> "$GITHUB_OUTPUT"
+ 
+       - name: パッチのサマリーを表示
++        working-directory: target-repo
+         env:
+-          PATCH_PATH: ${{ env.PATCH_PATH }}
++          PATCH_PATH: ${{ steps.patch_file.outputs.patch_path }}
+         run: git apply --stat "$PATCH_PATH"
+ 
+       - name: パッチを適用
++        working-directory: target-repo
+         env:
+-          PATCH_PATH: ${{ env.PATCH_PATH }}
++          PATCH_PATH: ${{ steps.patch_file.outputs.patch_path }}
+         run: git apply --apply --whitespace=fix "$PATCH_PATH"
+ 
+       - name: 作業ツリーの状態を表示
++        working-directory: target-repo
+         run: git status --short
+ 
+-      - name: Run tests (optional)
+-        if: false
++      - name: テストを実行
++        if: env.RUN_TESTS == 'run'
++        working-directory: target-repo
+         run: |
+-          echo "必要に応じてテストコマンドを有効化してください"
++          if [ -z "$TEST_COMMAND" ]; then
++            echo "::error::run_tests=run の場合は test_command を指定してください。" >&2
++            exit 1
++          fi
++          eval "$TEST_COMMAND"
+ 
+       - name: コミットを作成
++        id: create_commit
++        working-directory: target-repo
++        env:
++          COMMIT_MESSAGE: ${{ env.COMMIT_MESSAGE }}
+         run: |
+           if [ -z "$(git status --short)" ]; then
+-            echo "HAS_CHANGES=false" >> "$GITHUB_ENV"
++            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+             echo "パッチ適用後の差分がありません。コミットをスキップします。"
+             exit 0
+           fi
+-          echo "HAS_CHANGES=true" >> "$GITHUB_ENV"
+           git config user.name "github-actions"
+           git config user.email "github-actions@github.com"
+           git add -A
+-          git commit -m "Apply Codex patch"
+-
+-      - name: プッシュ先ブランチを決定
+-        if: env.HAS_CHANGES == 'true'
+-        env:
+-          TARGET_BRANCH: ${{ github.event.inputs.target_branch }}
+-          DISPATCH_BRANCH: ${{ github.ref_name }}
+-        run: |
+-          PUSH_BRANCH="$TARGET_BRANCH"
+-          if [ "$TARGET_BRANCH" != "$DISPATCH_BRANCH" ]; then
+-            PUSH_BRANCH="codex-patch/${GITHUB_RUN_ID}"
+-            echo "ターゲットブランチとワークフローブランチが異なるため、$PUSH_BRANCH にプッシュします。"
+-          else
+-            echo "ターゲットブランチに直接プッシュします。"
+-          fi
+-          echo "PUSH_BRANCH=$PUSH_BRANCH" >> "$GITHUB_ENV"
++          git commit -m "$COMMIT_MESSAGE"
++          echo "has_changes=true" >> "$GITHUB_OUTPUT"
+ 
+       - name: 変更をプッシュ
+-        if: env.HAS_CHANGES == 'true'
++        if: steps.create_commit.outputs.has_changes == 'true'
++        working-directory: target-repo
+         env:
+-          TARGET_BRANCH: ${{ github.event.inputs.target_branch }}
+-          PUSH_BRANCH: ${{ env.PUSH_BRANCH }}
+-        run: |
+-          if [ "$PUSH_BRANCH" = "$TARGET_BRANCH" ]; then
+-            if ! git show-ref --verify --quiet "refs/remotes/origin/$TARGET_BRANCH"; then
+-              echo "指定されたブランチ $TARGET_BRANCH が存在しません" >&2
+-              exit 1
+-            fi
+-          fi
+-          git push origin HEAD:"$PUSH_BRANCH"
++          PUSH_BRANCH: ${{ steps.prepare_branch.outputs.branch }}
++        run: git push origin HEAD:"$PUSH_BRANCH"
+ 
+       - name: Pull Request を作成
+-        if: env.HAS_CHANGES == 'true' && github.event.inputs.target_branch != github.ref_name
++        if: steps.create_commit.outputs.has_changes == 'true' && env.PUSH_STRATEGY == 'pull_request'
+         uses: actions/github-script@v7
+-        env:
+-          TARGET_BRANCH: ${{ github.event.inputs.target_branch }}
+-          SOURCE_BRANCH_FOR_PATCH: ${{ env.SOURCE_BRANCH }}
+-          PATCH_FILE_PATH: ${{ github.event.inputs.patch_file }}
+-          PUSH_BRANCH: ${{ env.PUSH_BRANCH }}
+         with:
++          github-token: ${{ secrets.PATCH_APPLIER_TOKEN != '' && secrets.PATCH_APPLIER_TOKEN || github.token }}
+           script: |
+-            const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
+-            const headRef = `${owner}:${process.env.PUSH_BRANCH}`;
+-            const baseRef = process.env.TARGET_BRANCH;
++            const targetRepository = process.env.TARGET_REPOSITORY;
++            const [owner, repo] = targetRepository.split('/');
++            const base = process.env.TARGET_BRANCH;
++            const head = process.env.WORKING_BRANCH;
++            const prTitle = process.env.PR_TITLE || 'Apply Codex patch';
++            const prBodyInput = process.env.PR_BODY_INPUT || '';
++
++            const defaultBody = [
++              'Codex で生成されたパッチを自動適用しました。',
++              `- Patch repository: ${process.env.PATCH_REPOSITORY}`,
++              `- Patch file: ${process.env.PATCH_FILE}`,
++              `- Base branch: ${base}`,
++              `- Head branch: ${head}`
++            ].join('\n');
++
++            const body = prBodyInput.trim().length > 0 ? prBodyInput : defaultBody;
+ 
+             const existing = await github.rest.pulls.list({
+               owner,
+               repo,
+-              head: headRef,
+-              base: baseRef,
++              head: `${owner}:${head}`,
++              base,
+               state: 'open'
+             });
+ 
+             if (existing.data.length > 0) {
+-              core.info(`既存の Pull Request (${existing.data[0].html_url}) が見つかりました。新規作成は行いません。`);
++              core.info(`既存の Pull Request が見つかりました: ${existing.data[0].html_url}`);
+               return;
+             }
+ 
+-            const title = 'Apply Codex patch';
+-            const body = [
+-              '自動適用された Codex パッチを確認してください。',
+-              `- 元ブランチ: ${process.env.GITHUB_REF_NAME}`,
+-              `- パッチ取得ブランチ: ${process.env.SOURCE_BRANCH_FOR_PATCH}`,
+-              `- 適用ブランチ: ${baseRef}`,
+-              `- プッシュブランチ: ${process.env.PUSH_BRANCH}`,
+-              `- パッチファイル: ${process.env.PATCH_FILE_PATH}`
+-            ].join('\n');
+-
+-            await github.rest.pulls.create({
++            const pr = await github.rest.pulls.create({
+               owner,
+               repo,
+-              title,
+-              head: process.env.PUSH_BRANCH,
+-              base: baseRef,
++              base,
++              head,
++              title: prTitle,
+               body
+             });
++
++            core.info(`Pull Request created: ${pr.data.html_url}`);
++        env:
++          TARGET_REPOSITORY: ${{ env.TARGET_REPOSITORY }}
++          TARGET_BRANCH: ${{ env.TARGET_BRANCH }}
++          WORKING_BRANCH: ${{ steps.prepare_branch.outputs.branch }}
++          PATCH_REPOSITORY: ${{ env.PATCH_REPOSITORY }}
++          PATCH_FILE: ${{ env.PATCH_FILE }}
++          PR_TITLE: ${{ github.event.inputs.pr_title }}
++          PR_BODY_INPUT: ${{ github.event.inputs.pr_body }}
